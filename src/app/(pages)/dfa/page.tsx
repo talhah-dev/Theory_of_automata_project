@@ -49,6 +49,32 @@ const parseCommaSeparatedValues = (value: string) =>
         .map((item) => item.trim())
         .filter(Boolean)
 
+const getDiagramLabelStyle = (label: string) => ({
+    letterSpacing: label.length > 2 ? '0.04em' : '0.02em',
+    wordSpacing: label.includes(' ') || label.includes(',') ? '0.35em' : '0em',
+})
+
+const groupDiagramTransitions = (transitions: DiagramTransition[]) => {
+    const grouped = new Map<string, DiagramTransition & { labels: string[] }>()
+
+    transitions.forEach((transition) => {
+        const key = `${transition.from}::${transition.to}::${transition.isLoop ? 'loop' : 'edge'}`
+        const existing = grouped.get(key)
+
+        if (existing) {
+            existing.labels.push(transition.label)
+            return
+        }
+
+        grouped.set(key, { ...transition, labels: [transition.label] })
+    })
+
+    return Array.from(grouped.values()).map(({ labels, ...transition }) => ({
+        ...transition,
+        label: Array.from(new Set(labels)).join(', '),
+    }))
+}
+
 const runDFASimulation = (
     input: string,
     start: string,
@@ -120,8 +146,6 @@ export default function DFA() {
         { currentState: 'q0', inputSymbol: 'b', nextState: 'q0' },
         { currentState: 'q1', inputSymbol: 'a', nextState: 'q2' },
         { currentState: 'q1', inputSymbol: 'b', nextState: 'q0' },
-        { currentState: 'q2', inputSymbol: 'a', nextState: 'q2' },
-        { currentState: 'q2', inputSymbol: 'b', nextState: 'q1' },
     ])
 
     const handleAddTransition = () => {
@@ -176,7 +200,7 @@ export default function DFA() {
             states: parsedStates,
             startState,
             finalStates: parsedFinalStates,
-            transitions: normalizedTransitions,
+            transitions: groupDiagramTransitions(normalizedTransitions),
         })
     }
 
@@ -184,13 +208,13 @@ export default function DFA() {
         states: parseCommaSeparatedValues(states),
         startState,
         finalStates: parseCommaSeparatedValues(finalStates),
-        transitions: transitions.map((transition) => ({
+        transitions: groupDiagramTransitions(transitions.map((transition) => ({
             from: transition.currentState,
             to: transition.nextState,
             label: transition.inputSymbol,
             isLoop: transition.currentState === transition.nextState,
             curveDirection: 1,
-        })),
+        }))),
     }
 
     const diagramStates = activeDiagram.states
@@ -294,8 +318,8 @@ export default function DFA() {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                    <div className="space-y-6">
+                <div className="">
+                    <div className="space-y-6 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                         <Card>
                             <CardHeader>
                                 <CardTitle>1. Basic Information</CardTitle>
@@ -348,158 +372,7 @@ export default function DFA() {
                         </Card>
 
                         <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between gap-3">
-                                    <CardTitle>3. DFA Visualization</CardTitle>
-                                    <Button onClick={handleGenerateDiagram} size="sm" variant="outline">
-                                        Generate Diagram
-                                    </Button>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="w-full border border-slate-100 rounded-lg bg-white p-4 min-h-[260px] overflow-x-auto">
-                                    <svg
-                                        className="w-full h-auto overflow-visible"
-                                        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                                    >
-                                        <defs>
-                                            <marker id="arrow" viewBox="0 0 10 10" refX="14" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                                                <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#1e293b" />
-                                            </marker>
-                                        </defs>
-
-                                        {diagramStates.length > 0 && statePositions.has(activeDiagram.startState) ? (
-                                            <>
-                                                <text
-                                                    x={(statePositions.get(activeDiagram.startState)?.x ?? 90) - 52}
-                                                    y={145}
-                                                    className="text-[11px] font-medium fill-slate-800"
-                                                    textAnchor="middle"
-                                                >
-                                                    Start
-                                                </text>
-                                                <line
-                                                    x1={(statePositions.get(activeDiagram.startState)?.x ?? 90) - 42}
-                                                    y1={140}
-                                                    x2={(statePositions.get(activeDiagram.startState)?.x ?? 90) - radius}
-                                                    y2={140}
-                                                    stroke="#1e293b"
-                                                    strokeWidth="1.5"
-                                                    markerEnd="url(#arrow)"
-                                                />
-                                            </>
-                                        ) : null}
-
-                                        {activeDiagram.transitions.map((transition, index) => {
-                                            const from = statePositions.get(transition.from)
-                                            const to = statePositions.get(transition.to)
-
-                                            if (!from || !to) {
-                                                return null
-                                            }
-
-                                            if (transition.isLoop) {
-                                                return (
-                                                    <g key={`${transition.from}-${transition.label}-${index}`}>
-                                                        <path
-                                                            d={`M ${from.x - 12} ${from.y - 22} C ${from.x - 34} ${from.y - 82}, ${from.x + 34} ${from.y - 82}, ${from.x + 12} ${from.y - 22}`}
-                                                            fill="none"
-                                                            stroke="#1e293b"
-                                                            strokeWidth="1.5"
-                                                            markerEnd="url(#arrow)"
-                                                        />
-                                                        <text
-                                                            x={from.x}
-                                                            y={from.y - 92}
-                                                            className="text-[11px] font-medium fill-slate-800"
-                                                            textAnchor="middle"
-                                                        >
-                                                            {transition.label}
-                                                        </text>
-                                                    </g>
-                                                )
-                                            }
-
-                                            const isForward = to.x >= from.x
-                                            const startX = from.x + (isForward ? radius : -radius)
-                                            const endX = to.x + (isForward ? -radius : radius)
-                                            const midX = (startX + endX) / 2
-                                            const controlY = from.y - 40 * transition.curveDirection
-                                            const labelY = controlY - 8 * transition.curveDirection
-
-                                            return (
-                                                <g key={`${transition.from}-${transition.to}-${transition.label}-${index}`}>
-                                                    <path
-                                                        d={`M ${startX} ${from.y} Q ${midX} ${controlY} ${endX} ${to.y}`}
-                                                        fill="none"
-                                                        stroke="#1e293b"
-                                                        strokeWidth="1.5"
-                                                        markerEnd="url(#arrow)"
-                                                    />
-                                                    <text
-                                                        x={midX}
-                                                        y={labelY}
-                                                        className="text-[11px] font-medium fill-slate-800"
-                                                        textAnchor="middle"
-                                                    >
-                                                        {transition.label}
-                                                    </text>
-                                                </g>
-                                            )
-                                        })}
-
-                                        {diagramStates.map((state) => {
-                                            const position = statePositions.get(state)
-
-                                            if (!position) {
-                                                return null
-                                            }
-
-                                            const isFinal = activeDiagram.finalStates.includes(state)
-
-                                            return (
-                                                <g key={state}>
-                                                    <circle
-                                                        cx={position.x}
-                                                        cy={position.y}
-                                                        r={radius}
-                                                        fill="white"
-                                                        stroke="#1e293b"
-                                                        strokeWidth="1.5"
-                                                    />
-                                                    {isFinal ? (
-                                                        <circle
-                                                            cx={position.x}
-                                                            cy={position.y}
-                                                            r={radius - 5}
-                                                            fill="none"
-                                                            stroke="#1e293b"
-                                                            strokeWidth="1.5"
-                                                        />
-                                                    ) : null}
-                                                    <text
-                                                        x={position.x}
-                                                        y={position.y + 4}
-                                                        className="text-[12px] font-medium fill-slate-900"
-                                                        textAnchor="middle"
-                                                    >
-                                                        {state}
-                                                    </text>
-                                                </g>
-                                            )
-                                        })}
-                                    </svg>
-                                </div>
-                                <p className="mt-3 text-[11px] text-slate-500">
-                                    Update your states and transitions, then click `Generate Diagram` to refresh the DFA graph.
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <div className="space-y-6">
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0">
                                 <CardTitle>2. Transitions</CardTitle>
                                 <Button onClick={handleAddTransition} size="sm" className="gap-1 h-8">
                                     <Plus className="w-3.5 h-3.5" />
@@ -592,6 +465,163 @@ export default function DFA() {
                                 </Table>
                             </CardContent>
                         </Card>
+                    </div>
+
+                    <div className="space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-center justify-between gap-3">
+                                    <CardTitle>3. DFA Visualization</CardTitle>
+                                    <Button onClick={handleGenerateDiagram} size="sm" variant="outline">
+                                        Generate Diagram
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="w-full border border-slate-100 rounded-lg bg-white p-4 min-h-[260px] overflow-x-auto">
+                                    <svg
+                                        className="w-full h-auto overflow-visible"
+                                        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                                    >
+                                        <defs>
+                                            <marker id="arrow" viewBox="0 0 10 10" refX="14" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                                <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#1e293b" />
+                                            </marker>
+                                        </defs>
+
+                                        {diagramStates.length > 0 && statePositions.has(activeDiagram.startState) ? (
+                                            <>
+                                                <text
+                                                    x={(statePositions.get(activeDiagram.startState)?.x ?? 90) - 52}
+                                                    y={145}
+                                                    className="text-[11px] font-medium fill-slate-800"
+                                                    textAnchor="middle"
+                                                >
+                                                    Start
+                                                </text>
+                                                <line
+                                                    x1={(statePositions.get(activeDiagram.startState)?.x ?? 90) - 42}
+                                                    y1={140}
+                                                    x2={(statePositions.get(activeDiagram.startState)?.x ?? 90) - radius}
+                                                    y2={140}
+                                                    stroke="#1e293b"
+                                                    strokeWidth="1.5"
+                                                    markerEnd="url(#arrow)"
+                                                />
+                                            </>
+                                        ) : null}
+
+                                        {activeDiagram.transitions.map((transition, index) => {
+                                            const from = statePositions.get(transition.from)
+                                            const to = statePositions.get(transition.to)
+
+                                            if (!from || !to) {
+                                                return null
+                                            }
+
+                                            if (transition.isLoop) {
+                                                return (
+                                                    <g key={`${transition.from}-${transition.label}-${index}`}>
+                                                        <path
+                                                            d={`M ${from.x - 12} ${from.y - 22} C ${from.x - 34} ${from.y - 82}, ${from.x + 34} ${from.y - 82}, ${from.x + 12} ${from.y - 22}`}
+                                                            fill="none"
+                                                            stroke="#1e293b"
+                                                            strokeWidth="1.5"
+                                                            markerEnd="url(#arrow)"
+                                                        />
+                                                        <text
+                                                            x={from.x}
+                                                            y={from.y - 92}
+                                                            className="text-[11px] font-medium fill-slate-800"
+                                                            textAnchor="middle"
+                                                            style={getDiagramLabelStyle(transition.label)}
+                                                        >
+                                                            {transition.label}
+                                                        </text>
+                                                    </g>
+                                                )
+                                            }
+
+                                            const isForward = to.x >= from.x
+                                            const startX = from.x + (isForward ? radius : -radius)
+                                            const endX = to.x + (isForward ? -radius : radius)
+                                            const midX = (startX + endX) / 2
+                                            const controlY = from.y - 40 * transition.curveDirection
+                                            const labelY = controlY - 8 * transition.curveDirection
+
+                                            return (
+                                                <g key={`${transition.from}-${transition.to}-${transition.label}-${index}`}>
+                                                    <path
+                                                        d={`M ${startX} ${from.y} Q ${midX} ${controlY} ${endX} ${to.y}`}
+                                                        fill="none"
+                                                        stroke="#1e293b"
+                                                        strokeWidth="1.5"
+                                                        markerEnd="url(#arrow)"
+                                                    />
+                                                    <text
+                                                        x={midX}
+                                                        y={labelY}
+                                                        className="text-[11px] font-medium fill-slate-800"
+                                                        textAnchor="middle"
+                                                        style={getDiagramLabelStyle(transition.label)}
+                                                    >
+                                                        {transition.label}
+                                                    </text>
+                                                </g>
+                                            )
+                                        })}
+
+                                        {diagramStates.map((state) => {
+                                            const position = statePositions.get(state)
+
+                                            if (!position) {
+                                                return null
+                                            }
+
+                                            const isFinal = activeDiagram.finalStates.includes(state)
+
+                                            return (
+                                                <g key={state}>
+                                                    <circle
+                                                        cx={position.x}
+                                                        cy={position.y}
+                                                        r={radius}
+                                                        fill="white"
+                                                        stroke="#1e293b"
+                                                        strokeWidth="1.5"
+                                                    />
+                                                    {isFinal ? (
+                                                        <circle
+                                                            cx={position.x}
+                                                            cy={position.y}
+                                                            r={radius - 5}
+                                                            fill="none"
+                                                            stroke="#1e293b"
+                                                            strokeWidth="1.5"
+                                                        />
+                                                    ) : null}
+                                                    <text
+                                                        x={position.x}
+                                                        y={position.y + 4}
+                                                        className="text-[12px] font-medium fill-slate-900"
+                                                        textAnchor="middle"
+                                                        style={getDiagramLabelStyle(state)}
+                                                    >
+                                                        {state}
+                                                    </text>
+                                                </g>
+                                            )
+                                        })}
+                                    </svg>
+                                </div>
+                                <p className="mt-3 text-[11px] text-slate-500">
+                                    Update your states and transitions, then click `Generate Diagram` to refresh the DFA graph.
+                                </p>
+                            </CardContent>
+                        </Card>
+
+
+
 
                         <Card>
                             <CardHeader>
@@ -614,13 +644,12 @@ export default function DFA() {
                                 <div className="space-y-1.5">
                                     <label className="block text-xs font-medium text-slate-700">Result</label>
                                     <div
-                                        className={`w-full p-3 rounded-md border text-xs ${
-                                            simulationResult
+                                        className={`w-full p-3 rounded-md border text-xs ${simulationResult
                                                 ? simulationResult.accepted
                                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                                                     : 'border-red-200 bg-red-50 text-red-700'
                                                 : 'border-slate-200 bg-slate-50 text-slate-400'
-                                        }`}
+                                            }`}
                                     >
                                         {simulationResult?.message ?? 'Result will appear here...'}
                                     </div>
