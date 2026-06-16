@@ -87,6 +87,25 @@ const groupDiagramTransitions = (transitions: DiagramTransition[]) => {
     }))
 }
 
+const getNFATransitionCell = (
+    transitions: NFATransition[],
+    currentState: string,
+    inputSymbol: string
+) => {
+    const matched = transitions.filter(
+        (transition) =>
+            transition.currentState === currentState &&
+            normalizeSymbol(transition.inputSymbol) === normalizeSymbol(inputSymbol)
+    )
+
+    if (!matched.length) {
+        return '—'
+    }
+
+    const nextStates = matched.flatMap((transition) => parseCommaSeparatedValues(transition.nextStates))
+    return uniqueSorted(nextStates).join(', ') || '—'
+}
+
 const buildTransitionMap = (transitionList: NFATransition[]) => {
     const transitionMap = new Map<string, string[]>()
 
@@ -662,11 +681,48 @@ export default function NFA() {
                             </CardContent>
                         </Card>
 
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>4. Transition Table</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="w-[20%]">State</TableHead>
+                                                {parseCommaSeparatedValues(alphabet).map((symbol) => (
+                                                    <TableHead key={symbol} className="w-[20%] text-center">
+                                                        {symbol}
+                                                    </TableHead>
+                                                ))}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {parseCommaSeparatedValues(states).map((state) => (
+                                                <TableRow key={state}>
+                                                    <TableCell className="font-medium">{state}</TableCell>
+                                                    {parseCommaSeparatedValues(alphabet).map((symbol) => (
+                                                        <TableCell key={`${state}-${symbol}`} className="text-center">
+                                                            {getNFATransitionCell(transitions, state, symbol)}
+                                                        </TableCell>
+                                                    ))}
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                                <p className="mt-3 text-[11px] text-slate-500">
+                                    This table shows the NFA transition relation for every state and input symbol, including epsilon transitions.
+                                </p>
+                            </CardContent>
+                        </Card>
+
 
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>4. Test Input String</CardTitle>
+                                <CardTitle>5. Test Input String</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div>
@@ -702,7 +758,7 @@ export default function NFA() {
 
                 <Card className="w-full">
                     <CardHeader>
-                        <CardTitle>5. Simulation Steps</CardTitle>
+                        <CardTitle>6. Simulation Steps</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {simulationResult ? (

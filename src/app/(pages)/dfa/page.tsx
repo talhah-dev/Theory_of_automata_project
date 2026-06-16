@@ -75,6 +75,20 @@ const groupDiagramTransitions = (transitions: DiagramTransition[]) => {
     }))
 }
 
+const getDFATransitionCell = (
+    transitions: DFATransition[],
+    currentState: string,
+    inputSymbol: string
+) => {
+    const match = transitions.find(
+        (transition) =>
+            transition.currentState === currentState &&
+            transition.inputSymbol === inputSymbol
+    )
+
+    return match?.nextState ?? '—'
+}
+
 const runDFASimulation = (
     input: string,
     start: string,
@@ -619,13 +633,46 @@ export default function DFA() {
                                 </p>
                             </CardContent>
                         </Card>
-
-
-
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>4. Transition Table</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="w-[20%]">State</TableHead>
+                                                {parseCommaSeparatedValues(alphabet).map((symbol) => (
+                                                    <TableHead key={symbol} className="w-[20%] text-center">
+                                                        {symbol}
+                                                    </TableHead>
+                                                ))}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {parseCommaSeparatedValues(states).map((state) => (
+                                                <TableRow key={state}>
+                                                    <TableCell className="font-medium">{state}</TableCell>
+                                                    {parseCommaSeparatedValues(alphabet).map((symbol) => (
+                                                        <TableCell key={`${state}-${symbol}`} className="text-center">
+                                                            {getDFATransitionCell(transitions, state, symbol)}
+                                                        </TableCell>
+                                                    ))}
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                                <p className="mt-3 text-[11px] text-slate-500">
+                                    This table shows the transition function for each state and input symbol.
+                                </p>
+                            </CardContent>
+                        </Card>
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>4. Test Input String</CardTitle>
+                                <CardTitle>5. Test Input String</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div>
@@ -661,7 +708,7 @@ export default function DFA() {
 
                 <Card className="w-full">
                     <CardHeader>
-                        <CardTitle>5. Simulation Steps</CardTitle>
+                        <CardTitle>6. Simulation Steps</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {simulationResult ? (
