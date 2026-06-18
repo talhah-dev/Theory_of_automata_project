@@ -43,6 +43,8 @@ type DiagramSnapshot = {
     transitions: DiagramTransition[]
 }
 
+const DEAD_STATE = 'DEAD'
+
 const parseCommaSeparatedValues = (value: string) =>
     value
         .split(',')
@@ -75,25 +77,86 @@ const groupDiagramTransitions = (transitions: DiagramTransition[]) => {
     }))
 }
 
+const hasDuplicateDfaTransitions = (transitions: DFATransition[]) => {
+    const seen = new Set<string>()
+
+    for (const transition of transitions) {
+        const key = `${transition.currentState}::${transition.inputSymbol}`
+        if (seen.has(key)) {
+            return true
+        }
+        seen.add(key)
+    }
+
+    return false
+}
+
+const buildCompleteDfaTransitionMap = (
+    states: string[],
+    alphabet: string[],
+    transitions: DFATransition[]
+) => {
+    const map = new Map<string, string>()
+    const completeStates = Array.from(new Set([...states, DEAD_STATE]))
+
+    completeStates.forEach((state) => {
+        alphabet.forEach((symbol) => {
+            if (state === DEAD_STATE) {
+                map.set(`${state}::${symbol}`, DEAD_STATE)
+                return
+            }
+
+            const match = transitions.find(
+                (transition) =>
+                    transition.currentState === state &&
+                    transition.inputSymbol === symbol
+            )
+
+            map.set(`${state}::${symbol}`, match?.nextState || DEAD_STATE)
+        })
+    })
+
+    return map
+}
+
+const buildCompleteDfaDiagramTransitions = (
+    states: string[],
+    alphabet: string[],
+    transitions: DFATransition[]
+) => {
+    const transitionMap = buildCompleteDfaTransitionMap(states, alphabet, transitions)
+    const curveUsage = new Map<string, number>()
+
+    return Array.from(new Set([...states, DEAD_STATE])).flatMap((state) =>
+        alphabet.map((symbol) => {
+            const nextState = transitionMap.get(`${state}::${symbol}`) ?? DEAD_STATE
+            const pairKey = `${state}->${nextState}`
+            const reverseKey = `${nextState}->${state}`
+            const currentCount = curveUsage.get(reverseKey) ?? 0
+            curveUsage.set(pairKey, currentCount + 1)
+
+            return {
+                from: state,
+                to: nextState,
+                label: symbol,
+                isLoop: state === nextState,
+                curveDirection: state === nextState ? 0 : currentCount % 2 === 0 ? 1 : -1,
+            }
+        })
+    )
+}
+
 const getDFATransitionCell = (
-    transitions: DFATransition[],
+    transitionMap: Map<string, string>,
     currentState: string,
     inputSymbol: string
-) => {
-    const match = transitions.find(
-        (transition) =>
-            transition.currentState === currentState &&
-            transition.inputSymbol === inputSymbol
-    )
-
-    return match?.nextState ?? '—'
-}
+) => transitionMap.get(`${currentState}::${inputSymbol}`) ?? DEAD_STATE
 
 const runDFASimulation = (
     input: string,
     start: string,
     finals: string,
-    transitionList: DFATransition[]
+    transitionMap: Map<string, string>
 ): SimulationResult => {
     let currentState = start
     const steps: SimulationStep[] = []
@@ -101,37 +164,16 @@ const runDFASimulation = (
 
     for (let i = 0; i < input.length; i++) {
         const symbol = input[i]
-        const match = transitionList.find(
-            (transition) =>
-                transition.currentState === currentState &&
-                transition.inputSymbol === symbol
-        )
-
-        if (!match) {
-            return {
-                accepted: false,
-                steps: [
-                    ...steps,
-                    {
-                        step: i + 1,
-                        currentState,
-                        inputSymbol: symbol,
-                        nextState: 'REJECT/DEAD',
-                    },
-                ],
-                message: `Rejected: No transition defined from ${currentState} with symbol '${symbol}'.`,
-                finalState: 'REJECT/DEAD',
-            }
-        }
+        const nextState = transitionMap.get(`${currentState}::${symbol}`) ?? DEAD_STATE
 
         steps.push({
             step: i + 1,
             currentState,
             inputSymbol: symbol,
-            nextState: match.nextState,
+            nextState,
         })
 
-        currentState = match.nextState
+        currentState = nextState
     }
 
     const isAccepted = finalStatesSet.has(currentState)
@@ -159,8 +201,16 @@ export default function DFA() {
         { currentState: 'q0', inputSymbol: 'a', nextState: 'q1' },
         { currentState: 'q0', inputSymbol: 'b', nextState: 'q0' },
         { currentState: 'q1', inputSymbol: 'a', nextState: 'q2' },
-        { currentState: 'q1', inputSymbol: 'b', nextState: 'q0' },
     ])
+
+    const parsedStates = parseCommaSeparatedValues(states)
+    const parsedAlphabet = parseCommaSeparatedValues(alphabet)
+    const parsedFinalStates = parseCommaSeparatedValues(finalStates)
+    const completeTransitionMap = buildCompleteDfaTransitionMap(parsedStates, parsedAlphabet, transitions)
+    const completeDiagramTransitions = groupDiagramTransitions(
+        buildCompleteDfaDiagramTransitions(parsedStates, parsedAlphabet, transitions)
+    )
+    const diagramStates = Array.from(new Set([...parsedStates, DEAD_STATE]))
 
     const handleAddTransition = () => {
         setTransitions([
@@ -184,54 +234,21 @@ export default function DFA() {
     }
 
     const handleGenerateDiagram = () => {
-        const parsedStates = parseCommaSeparatedValues(states)
-        const parsedFinalStates = parseCommaSeparatedValues(finalStates)
-        const curveUsage = new Map<string, number>()
-
-        const normalizedTransitions = transitions
-            .filter(
-                (transition) =>
-                    transition.currentState.trim() &&
-                    transition.inputSymbol.trim() &&
-                    transition.nextState.trim()
-            )
-            .map((transition) => {
-                const pairKey = `${transition.currentState}->${transition.nextState}`
-                const reverseKey = `${transition.nextState}->${transition.currentState}`
-                const currentCount = curveUsage.get(reverseKey) ?? 0
-                curveUsage.set(pairKey, currentCount + 1)
-
-                return {
-                    from: transition.currentState,
-                    to: transition.nextState,
-                    label: transition.inputSymbol,
-                    isLoop: transition.currentState === transition.nextState,
-                    curveDirection: transition.currentState === transition.nextState ? 0 : currentCount % 2 === 0 ? 1 : -1,
-                }
-            })
-
         setDiagramSnapshot({
-            states: parsedStates,
+            states: [...parsedStates, DEAD_STATE],
             startState,
             finalStates: parsedFinalStates,
-            transitions: groupDiagramTransitions(normalizedTransitions),
+            transitions: completeDiagramTransitions,
         })
     }
 
     const activeDiagram = diagramSnapshot ?? {
-        states: parseCommaSeparatedValues(states),
+        states: [...parsedStates, DEAD_STATE],
         startState,
-        finalStates: parseCommaSeparatedValues(finalStates),
-        transitions: groupDiagramTransitions(transitions.map((transition) => ({
-            from: transition.currentState,
-            to: transition.nextState,
-            label: transition.inputSymbol,
-            isLoop: transition.currentState === transition.nextState,
-            curveDirection: 1,
-        }))),
+        finalStates: parsedFinalStates,
+        transitions: completeDiagramTransitions,
     }
 
-    const diagramStates = activeDiagram.states
     const svgWidth = Math.max(520, diagramStates.length * 170)
     const svgHeight = 260
     const radius = 26
@@ -247,10 +264,6 @@ export default function DFA() {
     )
 
     const handleRunSimulation = () => {
-        const parsedStates = parseCommaSeparatedValues(states)
-        const parsedAlphabet = parseCommaSeparatedValues(alphabet)
-        const finalStateValues = parseCommaSeparatedValues(finalStates)
-
         if (!startState.trim()) {
             setSimulationResult({
                 accepted: false,
@@ -271,7 +284,7 @@ export default function DFA() {
             return
         }
 
-        const invalidFinalState = finalStateValues.find((state) => !parsedStates.includes(state))
+        const invalidFinalState = parsedFinalStates.find((state) => !parsedStates.includes(state))
         if (invalidFinalState) {
             setSimulationResult({
                 accepted: false,
@@ -293,8 +306,18 @@ export default function DFA() {
             return
         }
 
+        if (hasDuplicateDfaTransitions(transitions)) {
+            setSimulationResult({
+                accepted: false,
+                steps: [],
+                message: 'Rejected: Duplicate transitions found for the same state and input symbol. A DFA must have exactly one transition for each pair.',
+                finalState: '',
+            })
+            return
+        }
+
         setSimulationResult(
-            runDFASimulation(inputString, startState, finalStates, transitions)
+            runDFASimulation(inputString, startState, finalStates, completeTransitionMap)
         )
     }
 
@@ -621,7 +644,7 @@ export default function DFA() {
                                                         textAnchor="middle"
                                                         style={getDiagramLabelStyle(state)}
                                                     >
-                                                        {state}
+                                                        {state === DEAD_STATE ? 'Dead' : state}
                                                     </text>
                                                 </g>
                                             )
@@ -643,7 +666,7 @@ export default function DFA() {
                                         <TableHeader>
                                             <TableRow>
                                                 <TableHead className="w-[20%]">State</TableHead>
-                                                {parseCommaSeparatedValues(alphabet).map((symbol) => (
+                                                {parsedAlphabet.map((symbol) => (
                                                     <TableHead key={symbol} className="w-[20%] text-center">
                                                         {symbol}
                                                     </TableHead>
@@ -651,12 +674,12 @@ export default function DFA() {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {parseCommaSeparatedValues(states).map((state) => (
+                                            {diagramStates.map((state) => (
                                                 <TableRow key={state}>
                                                     <TableCell className="font-medium">{state}</TableCell>
-                                                    {parseCommaSeparatedValues(alphabet).map((symbol) => (
+                                                    {parsedAlphabet.map((symbol) => (
                                                         <TableCell key={`${state}-${symbol}`} className="text-center">
-                                                            {getDFATransitionCell(transitions, state, symbol)}
+                                                            {getDFATransitionCell(completeTransitionMap, state, symbol)}
                                                         </TableCell>
                                                     ))}
                                                 </TableRow>
@@ -747,7 +770,7 @@ export default function DFA() {
                                         <TableCell>{startState}</TableCell>
                                         <TableCell>-</TableCell>
                                         <TableCell>{startState}</TableCell>
-                                        <TableCell>{inputString || 'epsilon'}</TableCell>
+                                        <TableCell>{inputString || 'empty'}</TableCell>
                                         <TableCell>Start</TableCell>
                                     </TableRow>
                                     {simulationResult.steps.map((step) => (
@@ -757,10 +780,10 @@ export default function DFA() {
                                             <TableCell>{step.inputSymbol}</TableCell>
                                             <TableCell>{step.nextState}</TableCell>
                                             <TableCell>
-                                                {inputString.slice(step.step) || 'epsilon'}
+                                                {inputString.slice(step.step) || 'empty'}
                                             </TableCell>
                                             <TableCell>
-                                                {step.nextState === 'REJECT/DEAD'
+                                                {step.nextState === DEAD_STATE
                                                     ? 'Rejected'
                                                     : step.step === simulationResult.steps.length
                                                         ? simulationResult.accepted
